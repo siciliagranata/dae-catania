@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#145284" />
+  <title>DAE – Defibrillatori</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@300;400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --blu-700: #145284; --blu-500: #2E6DA8; --blu-300: #7BA7CE; --blu-100: #D1E2F2;
+      --verde-700: #3CA434; --verde-100: #E2F8DE;
+      --grigio-900: #1E1E1E; --grigio-700: #4A4A4A; --grigio-500: #9B9B9B;
+      --grigio-300: #D9D9D9; --grigio-100: #F5F5F5;
+      --rosso: #D32F2F; --giallo: #FFCC00; --azzurro: #0288D1; --bianco: #ffffff;
+      --radius: 12px; --radius-sm: 8px;
+      --shadow: 0 4px 20px rgba(20,82,132,0.15);
+      --shadow-lg: 0 8px 32px rgba(20,82,132,0.22);
+    }
+    html, body { height: 100%; width: 100%; font-family: 'Titillium Web', sans-serif; background: var(--grigio-100); overflow: hidden; overscroll-behavior: none; }
+    #plugin-root { display: flex; flex-direction: column; height: 100%; width: 100%; position: fixed; top: 0; left: 0; right: 0; bottom: 0; }
+
+    /* INFO BAR */
+    #info-bar { background: var(--blu-700); color: var(--bianco); padding: clamp(8px,2.5vw,14px) clamp(12px,4vw,18px); display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-shrink: 0; box-shadow: 0 2px 10px rgba(13,58,92,0.35); z-index: 1000; }
+    .pulse-dot { width: clamp(28px,7vw,38px); height: clamp(28px,7vw,38px); background: var(--rosso); border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; animation: pulse-red 2.5s ease-in-out infinite; }
+    @keyframes pulse-red { 0%,100%{box-shadow:0 0 0 0 rgba(211,47,47,0.55)} 50%{box-shadow:0 0 0 7px rgba(211,47,47,0)} }
+    .pulse-dot i { font-size: clamp(13px,3.5vw,18px); color: var(--bianco); }
+    #bar-title { font-size: clamp(14px,3.5vw,18px); font-weight: 700; line-height: 1.1; }
+    #bar-subtitle { font-size: clamp(9px,2.2vw,12px); font-weight: 300; opacity: 0.8; margin-top: 1px; }
+    #counter-badge { background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.3); border-radius: 20px; padding: clamp(4px,1.5vw,6px) clamp(10px,3vw,14px); font-size: clamp(11px,2.8vw,14px); font-weight: 700; white-space: nowrap; display: flex; align-items: center; gap: 6px; transition: all 0.3s; }
+    #counter-badge.loaded { background: var(--verde-700); border-color: var(--verde-700); }
+
+    /* BANNER */
+    #status-banner { display: none; align-items: center; gap: 10px; padding: clamp(7px,2vw,10px) clamp(12px,4vw,18px); font-size: clamp(11px,2.5vw,13px); font-weight: 600; flex-shrink: 0; }
+    #status-banner.live  { background: var(--verde-100); color: #1a5c14; display: flex; border-bottom: 2px solid var(--verde-700); }
+    #status-banner.demo  { background: #fff8cc; color: #7a6000; display: flex; border-bottom: 2px solid var(--giallo); }
+    #status-banner i { font-size: 14px; flex-shrink: 0; }
+    #status-banner a { color: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+
+    /* TOOLBAR */
+    #toolbar { background: var(--bianco); border-bottom: 1px solid var(--grigio-300); padding: clamp(6px,1.8vw,10px) clamp(12px,4vw,18px); display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-shrink: 0; z-index: 999; }
+    .tool-btn { background: var(--grigio-100); border: 1px solid var(--grigio-300); color: var(--blu-700); border-radius: var(--radius-sm); padding: clamp(6px,1.8vw,9px) clamp(10px,3vw,14px); font-family: 'Titillium Web', sans-serif; font-size: clamp(11px,2.8vw,13px); font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s; white-space: nowrap; -webkit-tap-highlight-color: transparent; }
+    .tool-btn:active { background: var(--blu-100); transform: scale(0.97); }
+    .tool-btn.primary { background: var(--blu-700); border-color: var(--blu-700); color: var(--bianco); }
+    .tool-btn.primary:active { background: var(--blu-500); }
+    #osm-credit { font-size: clamp(8px,2vw,10px); color: var(--grigio-500); font-weight: 300; text-align: right; }
+    #osm-credit a { color: var(--blu-500); text-decoration: none; font-weight: 600; }
+
+    /* MAPPA */
+    #map { flex: 1; width: 100%; z-index: 1; touch-action: pan-x pan-y; }
+
+    /* LOADING */
+    #loading-overlay { position: absolute; inset: 0; background: rgba(20,82,132,0.93); z-index: 3000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; transition: opacity 0.35s; }
+    #loading-overlay.hidden { opacity: 0; pointer-events: none; }
+    .spinner { width: 50px; height: 50px; border: 5px solid rgba(255,255,255,0.25); border-top-color: var(--bianco); border-radius: 50%; animation: spin 0.85s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-overlay p { color: var(--bianco); font-size: clamp(14px,3.5vw,17px); font-weight: 600; text-align: center; padding: 0 24px; }
+    #loading-overlay small { color: rgba(255,255,255,0.7); font-size: clamp(10px,2.5vw,13px); font-weight: 300; text-align: center; }
+
+    /* POPUP */
+    .leaflet-popup-content-wrapper { border-radius: var(--radius)!important; box-shadow: var(--shadow-lg)!important; border: none!important; padding: 0!important; overflow: hidden; max-width: min(300px,88vw)!important; font-family: 'Titillium Web',sans-serif!important; }
+    .leaflet-popup-content { margin: 0!important; width: 100%!important; }
+    .leaflet-popup-tip-container { display: none; }
+    .popup-header { background: var(--rosso); color: var(--bianco); padding: 12px 14px 10px; display: flex; align-items: center; gap: 10px; }
+    .popup-header i { font-size: 20px; flex-shrink: 0; }
+    .popup-header h3 { font-size: clamp(13px,3.5vw,15px); font-weight: 700; line-height: 1.2; }
+    .popup-header span { font-size: 10px; font-weight: 300; opacity: 0.85; }
+    .popup-body { padding: 12px 14px; background: var(--bianco); display: flex; flex-direction: column; gap: 7px; }
+    .popup-row { display: flex; align-items: flex-start; gap: 8px; font-size: clamp(11px,3vw,13px); }
+    .popup-row i { color: var(--blu-700); font-size: 13px; width: 15px; text-align: center; margin-top: 2px; flex-shrink: 0; }
+    .popup-row span { color: var(--grigio-700); line-height: 1.4; }
+    .badge-accesso { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 20px; font-size: 10px; font-weight: 700; }
+    .badge-yes   { background: var(--verde-100); color: var(--verde-700); }
+    .badge-no    { background: #ffeaea; color: var(--rosso); }
+    .badge-other { background: var(--blu-100); color: var(--blu-700); }
+    .popup-footer { padding: 9px 14px 13px; background: var(--grigio-100); border-top: 1px solid var(--grigio-300); }
+    .btn-naviga { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 9px; background: var(--blu-700); color: var(--bianco); border: none; border-radius: var(--radius-sm); font-family: 'Titillium Web',sans-serif; font-size: clamp(12px,3.2vw,14px); font-weight: 700; cursor: pointer; text-decoration: none; }
+
+    /* LEGENDA */
+    #legenda { position: absolute; bottom: clamp(14px,4vw,22px); left: clamp(10px,3vw,14px); background: var(--bianco); border-radius: var(--radius-sm); padding: 9px 13px; box-shadow: var(--shadow); z-index: 800; font-size: clamp(9px,2.5vw,11px); font-family: 'Titillium Web',sans-serif; }
+    #legenda h4 { font-size: clamp(9px,2.2vw,11px); font-weight: 700; color: var(--blu-700); margin-bottom: 6px; letter-spacing: 0.05em; text-transform: uppercase; }
+    .leg-row { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; color: var(--grigio-700); }
+    .leg-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; border: 2px solid var(--bianco); box-shadow: 0 1px 4px rgba(0,0,0,0.2); }
+    .d-red  { background: var(--rosso); }
+    .d-blue { background: var(--azzurro); }
+    .d-gold { background: #B8860B; }
+
+    /* TOAST */
+    #toast { position: absolute; bottom: clamp(20px,6vw,36px); left: 50%; transform: translateX(-50%) translateY(20px); background: rgba(30,30,30,0.92); color: var(--bianco); padding: 9px 18px; border-radius: 30px; font-size: clamp(11px,3vw,13px); font-weight: 600; z-index: 4000; opacity: 0; transition: all 0.3s; white-space: nowrap; pointer-events: none; }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .leaflet-control-zoom a { font-family: 'Titillium Web',sans-serif!important; font-weight: 700!important; }
+    .leaflet-control-attribution { font-family: 'Titillium Web',sans-serif!important; font-size: 9px!important; }
+  </style>
+</head>
+<body>
+<div id="plugin-root">
+  <div id="info-bar">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="pulse-dot"><i class="fas fa-heart-pulse"></i></div>
+      <div><div id="bar-title">Defibrillatori DAE</div><div id="bar-subtitle">Catania · OpenStreetMap</div></div>
+    </div>
+    <div id="counter-badge"><i class="fas fa-location-dot" style="font-size:11px"></i><span id="count">–</span></div>
+  </div>
+  <div id="status-banner"></div>
+  <div id="toolbar">
+    <button class="tool-btn primary" id="btn-locate"><i class="fas fa-location-crosshairs"></i><span>Vicino a me</span></button>
+    <button class="tool-btn" id="btn-refresh"><i class="fas fa-rotate-right"></i><span>Aggiorna</span></button>
+    <div id="osm-credit">Dati:<br><a href="https://www.openstreetmap.org/copyright" target="_blank">© OpenStreetMap</a></div>
+  </div>
+  <div id="map"></div>
+  <div id="legenda">
+    <h4>Legenda</h4>
+    <div class="leg-row"><div class="leg-dot d-red"></div><span>DAE esterno</span></div>
+    <div class="leg-row"><div class="leg-dot d-blue"></div><span>DAE interno</span></div>
+    <div class="leg-row" id="leg-demo" style="display:none"><div class="leg-dot d-gold"></div><span>Dato demo</span></div>
+  </div>
+</div>
+<div id="toast"></div>
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <p id="load-msg">Caricamento DAE…</p>
+  <small id="load-sub">Connessione a OpenStreetMap</small>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+
+// ── CONFIGURAZIONE ────────────────────────────────────────────────
+// URL del proxy PHP sulla stessa origine — nessun blocco CORS
+var PROXY_URL = 'https://overpass-proxy-dae.siciliagranata.workers.dev/?t=' + Date.now();
+
+// ── DATI DEMO (fallback se proxy non raggiungibile) ───────────────
+var DEMO = [
+  { lat:37.5023, lng:15.0872, tags:{ name:"Ospedale Vittorio Emanuele", "addr:street":"Via Plebiscito", "addr:city":"Catania", access:"yes", opening_hours:"24/7", operator:"ASP Catania" }},
+  { lat:37.5030, lng:15.0908, tags:{ name:"Presidio Garibaldi Centro", "addr:street":"P.za S. Maria di Gesù", "addr:city":"Catania", access:"yes", opening_hours:"24/7", operator:"Garibaldi" }},
+  { lat:37.5080, lng:15.0930, tags:{ name:"Stazione Centrale", "addr:street":"P.za Papa Giovanni XXIII", "addr:city":"Catania", access:"yes", opening_hours:"06:00-23:00", indoor:"yes" }},
+  { lat:37.5098, lng:15.0860, tags:{ name:"Aeroporto Fontanarossa – Partenze", "addr:street":"Via Fontanarossa", "addr:city":"Catania", access:"yes", opening_hours:"24/7", operator:"SAC", indoor:"yes" }},
+  { lat:37.5062, lng:15.0800, tags:{ name:"Piazza del Duomo", "addr:street":"Piazza del Duomo", "addr:city":"Catania", access:"yes" }},
+  { lat:37.5112, lng:15.0785, tags:{ name:"Via Etnea – Farmacia Comunale", "addr:street":"Via Etnea 216", "addr:city":"Catania", access:"customers", opening_hours:"Mo-Sa 08:30-20:00" }},
+  { lat:37.5145, lng:15.0813, tags:{ name:"Palazzo degli Elefanti – Municipio", "addr:street":"P.za del Municipio", "addr:city":"Catania", access:"yes", opening_hours:"Mo-Fr 08:00-14:00", indoor:"yes", operator:"Comune di Catania" }},
+  { lat:37.4985, lng:15.0755, tags:{ name:"Centro Commerciale Katanè", "addr:street":"Viale Librino", "addr:city":"Catania", access:"yes", opening_hours:"09:00-21:00", indoor:"yes" }},
+  { lat:37.5188, lng:15.0912, tags:{ name:"Università di Catania – Polo Scientifico", "addr:street":"Viale A. Doria 6", "addr:city":"Catania", access:"yes", opening_hours:"Mo-Fr 08:00-20:00", indoor:"yes", operator:"UniCT" }},
+  { lat:37.4932, lng:15.0691, tags:{ name:"Ospedale Cannizzaro", "addr:street":"Via Messina 829", "addr:city":"Catania", access:"yes", opening_hours:"24/7", operator:"ASP Catania" }},
+  { lat:37.5041, lng:15.1015, tags:{ name:"Stadio Angelo Massimino", "addr:street":"Via Palestro", "addr:city":"Catania", access:"yes" }},
+  { lat:37.5210, lng:15.0748, tags:{ name:"Giardino Bellini", "addr:street":"Via Etnea", "addr:city":"Catania", access:"yes" }},
+  { lat:37.5075, lng:15.0668, tags:{ name:"Policlinico – P.O. Gaspare Rodolico", "addr:street":"Via S. Sofia 78", "addr:city":"Catania", access:"yes", opening_hours:"24/7", operator:"A.O.U. Policlinico" }},
+  { lat:37.5155, lng:15.0990, tags:{ name:"I.T.T. Enrico Fermi", "addr:street":"Via Capo Passero", "addr:city":"Catania", access:"yes", indoor:"yes" }},
+  { lat:37.4870, lng:15.0820, tags:{ name:"DAE Quartiere San Giovanni Galermo", "addr:street":"Via Galermo", "addr:city":"Catania", access:"yes" }},
+];
+
+// ── MAPPA ─────────────────────────────────────────────────────────
+var map = L.map('map', { center:[37.5079,15.0830], zoom:13, tap:false });
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom:19
+}).addTo(map);
+var daeLayer = L.layerGroup().addTo(map);
+
+// ── ICONE ─────────────────────────────────────────────────────────
+function creaIcona(indoor, demo) {
+  var c = demo ? '#B8860B' : (indoor ? '#0288D1' : '#D32F2F');
+  var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="34" height="42" viewBox="0 0 34 42">' +
+    '<path d="M17 2C9.8 2 4 7.8 4 15c0 9.5 13 25 13 25s13-15.5 13-25C30 7.8 24.2 2 17 2z" fill="' + c + '" stroke="white" stroke-width="2.5"/>' +
+    '<circle cx="17" cy="15" r="8.5" fill="white" opacity="0.95"/>' +
+    '<line x1="13" y1="15" x2="21" y2="15" stroke="' + c + '" stroke-width="2.6" stroke-linecap="round"/>' +
+    '<line x1="17" y1="11" x2="17" y2="19" stroke="' + c + '" stroke-width="2.6" stroke-linecap="round"/>' +
+    '</svg>';
+  return L.divIcon({ html:'<div style="line-height:0">' + svg + '</div>', iconSize:[34,42], iconAnchor:[17,42], popupAnchor:[0,-42], className:'' });
+}
+
+// ── POPUP ─────────────────────────────────────────────────────────
+function accessoLabel(v) {
+  if (!v) return { cls:'badge-other', txt:'Non specificato' };
+  var l = v.toLowerCase();
+  if (l==='yes'||l==='public') return { cls:'badge-yes', txt:'Accesso pubblico' };
+  if (l==='no'||l==='private') return { cls:'badge-no', txt:'Accesso privato' };
+  if (l==='customers') return { cls:'badge-other', txt:'Solo clienti' };
+  if (l==='24/7') return { cls:'badge-yes', txt:'24 ore su 24' };
+  return { cls:'badge-other', txt:v };
+}
+
+function creaPopup(tags, lat, lng, demo) {
+  var nome   = tags.name || 'Defibrillatore DAE';
+  var indoor = (tags.indoor==='yes'||tags.location==='indoor');
+  var via    = tags['addr:street'] ? tags['addr:street'] + (tags['addr:housenumber']?' '+tags['addr:housenumber']:'') : null;
+  var comune = tags['addr:city'] || null;
+  var acc    = accessoLabel(tags.access);
+  var nav    = 'geo:' + lat + ',' + lng + '?q=' + lat + ',' + lng;
+  var r = '';
+  if (via||comune) r += '<div class="popup-row"><i class="fas fa-location-dot"></i><span>' + [via,comune].filter(Boolean).join(', ') + '</span></div>';
+  r += '<div class="popup-row"><i class="fas fa-shield-heart"></i><span><span class="badge-accesso ' + acc.cls + '">' + acc.txt + '</span></span></div>';
+  if (tags.opening_hours) r += '<div class="popup-row"><i class="fas fa-clock"></i><span>' + tags.opening_hours + '</span></div>';
+  if (tags.operator||tags.brand) r += '<div class="popup-row"><i class="fas fa-building"></i><span>' + (tags.operator||tags.brand) + '</span></div>';
+  if (indoor) r += '<div class="popup-row"><i class="fas fa-door-open"></i><span style="color:#0288D1;font-weight:600">Ambiente interno</span></div>';
+  if (demo)   r += '<div class="popup-row"><i class="fas fa-triangle-exclamation" style="color:#B8860B"></i><span style="color:#9B9B9B;font-size:10px">Dato indicativo — verificare sul campo</span></div>';
+  return '<div><div class="popup-header"><i class="fas fa-heart-pulse"></i><div><h3>' + nome + '</h3><span>DAE · OpenStreetMap</span></div></div>' +
+    '<div class="popup-body">' + r + '</div>' +
+    '<div class="popup-footer"><a href="' + nav + '" class="btn-naviga"><i class="fas fa-route"></i> Naviga verso questo DAE</a></div></div>';
+}
+
+// ── RENDER ────────────────────────────────────────────────────────
+function renderMarkers(elementi, demo) {
+  daeLayer.clearLayers();
+  var n = 0;
+  elementi.forEach(function(el) {
+    var lat = el.lat != null ? el.lat : (el.center ? el.center.lat : null);
+    var lng = el.lon != null ? el.lon : (el.center ? el.center.lon : (el.lng||null));
+    if (!lat||!lng) return;
+    var tags = el.tags||{};
+    var indoor = (tags.indoor==='yes'||tags.location==='indoor');
+    var m = L.marker([lat,lng], { icon:creaIcona(indoor,demo) });
+    m.bindPopup(creaPopup(tags,lat,lng,demo), { maxWidth:300, minWidth:240 });
+    m.on('click', function(){ map.setView([lat,lng], Math.max(map.getZoom(),16)); });
+    daeLayer.addLayer(m);
+    n++;
+  });
+  document.getElementById('count').textContent = n;
+  document.getElementById('counter-badge').classList.toggle('loaded', !demo);
+  document.getElementById('leg-demo').style.display = demo ? 'flex' : 'none';
+  if (n > 0) { var b = daeLayer.getBounds(); if (b.isValid()) map.fitBounds(b, {padding:[36,36], maxZoom:15}); }
+  return n;
+}
+
+// ── BANNER ────────────────────────────────────────────────────────
+function setBanner(tipo, html) {
+  var b = document.getElementById('status-banner');
+  b.className = tipo; b.innerHTML = html;
+}
+
+function mostraDemo(motivo) {
+  renderMarkers(DEMO, true);
+  setBanner('demo', '<i class="fas fa-triangle-exclamation"></i><span><strong>Dati demo</strong> — ' + motivo + '. <a onclick="caricaDAE(true)">Riprova</a></span>');
+  toast('Dati dimostrativi — ' + DEMO.length + ' DAE');
+}
+
+// ── FETCH TRAMITE PROXY LOCALE ────────────────────────────────────
+function fetchProxy(cb, errCb) {
+  var xhr = new XMLHttpRequest();
+  var aborted = false;
+  var timer = setTimeout(function(){ aborted=true; xhr.abort(); errCb(new Error('Timeout')); }, 20000);
+  xhr.open('GET', PROXY_URL, true);
+  xhr.onload = function() {
+    clearTimeout(timer);
+    if (aborted) return;
+    if (xhr.status === 200) {
+      try {
+        var d = JSON.parse(xhr.responseText);
+        if (d.elements) { cb(d.elements); }
+        else { errCb(new Error('Risposta proxy non valida')); }
+      } catch(e) { errCb(e); }
+    } else { errCb(new Error('HTTP ' + xhr.status)); }
+  };
+  xhr.onerror = function(){ clearTimeout(timer); if (!aborted) errCb(new Error('Errore di rete')); };
+  xhr.send();
+}
+
+// ── CARICAMENTO ───────────────────────────────────────────────────
+var busy = false;
+function caricaDAE(forced) {
+  if (busy && !forced) return;
+  busy = true;
+  document.getElementById('status-banner').className = '';
+  document.getElementById('loading-overlay').classList.remove('hidden');
+  document.getElementById('load-msg').textContent = 'Caricamento DAE…';
+  document.getElementById('load-sub').textContent = 'Connessione a OpenStreetMap';
+
+  fetchProxy(
+    function(elementi) {
+      document.getElementById('loading-overlay').classList.add('hidden');
+      var n = renderMarkers(elementi, false);
+      setBanner('live', '<i class="fas fa-circle-check"></i><span>Dati live · ' + n + ' DAE da OpenStreetMap · <a href="https://www.openstreetmap.org/copyright" target="_blank">© ODbL</a></span>');
+      toast(n + ' defibrillatori caricati');
+      busy = false;
+    },
+    function(err) {
+      document.getElementById('loading-overlay').classList.add('hidden');
+      mostraDemo('Proxy non raggiungibile: ' + (err.message||'errore'));
+      busy = false;
+    }
+  );
+}
+
+// ── GEOLOCALIZZAZIONE ─────────────────────────────────────────────
+var uM=null, uC=null;
+document.getElementById('btn-locate').addEventListener('click', function() {
+  if (!navigator.geolocation) { toast('Geolocalizzazione non supportata'); return; }
+  toast('Ricerca posizione…');
+  navigator.geolocation.getCurrentPosition(function(pos) {
+    var lt=pos.coords.latitude, lg=pos.coords.longitude, ac=pos.coords.accuracy;
+    if(uM)map.removeLayer(uM); if(uC)map.removeLayer(uC);
+    uM = L.circleMarker([lt,lg],{radius:8,color:'#145284',fillColor:'#2E6DA8',fillOpacity:1,weight:3}).addTo(map).bindPopup('<b style="font-family:Titillium Web,sans-serif">Sei qui</b>');
+    uC = L.circle([lt,lg],{radius:ac,color:'#145284',fillColor:'#D1E2F2',fillOpacity:0.3,weight:1}).addTo(map);
+    map.setView([lt,lg],15); uM.openPopup(); toast('Posizione trovata!');
+  }, function(){ toast('Posizione non disponibile'); }, {enableHighAccuracy:true,timeout:10000});
+});
+
+document.getElementById('btn-refresh').addEventListener('click', function() {
+  var ic = this.querySelector('i');
+  ic.style.animation='spin 0.85s linear infinite';
+  setTimeout(function(){ ic.style.animation=''; },1500);
+  caricaDAE(true);
+});
+
+// ── LIFECYCLE GOODBARBER ──────────────────────────────────────────
+function gbOnShow()   { if(map) setTimeout(function(){ map.invalidateSize(); },100); }
+function gbOnResume() { if(map) setTimeout(function(){ map.invalidateSize(); },150); }
+function gbOnHide()   {}
+
+// ── TOAST ─────────────────────────────────────────────────────────
+var tt;
+function toast(msg) {
+  var t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(tt); tt=setTimeout(function(){ t.classList.remove('show'); },2800);
+}
+
+// ── AVVIO ─────────────────────────────────────────────────────────
+setTimeout(function(){ map.invalidateSize(); caricaDAE(); }, 200);
+</script>
+</body>
+</html>
