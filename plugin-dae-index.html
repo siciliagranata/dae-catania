@@ -236,8 +236,35 @@ function mostraDemo(motivo) {
   toast('Dati dimostrativi — ' + DEMO.length + ' DAE');
 }
 
-// ── FETCH TRAMITE PROXY LOCALE ────────────────────────────────────
+// ── FETCH — prova API GoodBarber, poi XMLHttpRequest ─────────────
 function fetchProxy(cb, errCb) {
+
+  // Metodo 1: API nativa GoodBarber (bypassa il Service Worker)
+  if (window.gb && window.gb.network && window.gb.network.request) {
+    window.gb.network.request({
+      url: PROXY_URL,
+      method: 'GET',
+      success: function(response) {
+        try {
+          var raw = (typeof response === 'string') ? response : (response.data || response.body || JSON.stringify(response));
+          var d = JSON.parse(raw);
+          if (d && d.elements) { cb(d.elements); return; }
+        } catch(e) {}
+        errCb(new Error('Risposta GB non valida'));
+      },
+      error: function(err) {
+        // Se GB network fallisce, prova XHR
+        fetchXHR(cb, errCb);
+      }
+    });
+    return;
+  }
+
+  // Metodo 2: XMLHttpRequest standard
+  fetchXHR(cb, errCb);
+}
+
+function fetchXHR(cb, errCb) {
   var xhr = new XMLHttpRequest();
   var aborted = false;
   var timer = setTimeout(function(){ aborted=true; xhr.abort(); errCb(new Error('Timeout')); }, 20000);
@@ -248,9 +275,9 @@ function fetchProxy(cb, errCb) {
     if (xhr.status === 200) {
       try {
         var d = JSON.parse(xhr.responseText);
-        if (d.elements) { cb(d.elements); }
-        else { errCb(new Error('Risposta proxy non valida')); }
-      } catch(e) { errCb(e); }
+        if (d.elements) { cb(d.elements); return; }
+      } catch(e) {}
+      errCb(new Error('Risposta non valida'));
     } else { errCb(new Error('HTTP ' + xhr.status)); }
   };
   xhr.onerror = function(){ clearTimeout(timer); if (!aborted) errCb(new Error('Errore di rete')); };
@@ -320,3 +347,5 @@ function toast(msg) {
 // ── AVVIO ─────────────────────────────────────────────────────────
 setTimeout(function(){ map.invalidateSize(); caricaDAE(); }, 200);
 </script>
+</body>
+</html>
